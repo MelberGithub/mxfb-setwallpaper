@@ -1,0 +1,13 @@
+Source: mxfb-setwallpaper
+Section: miscellaneous
+Priority: optional
+Maintainer: Melber <melber-mx-linux@gmail.com>
+Rules-Requires-Root: no
+Build-Depends: debhelper-compat (= 13),
+Standards-Version: 4.6.2
+Homepage: <https:/mxlinux.org>
+
+Package: mxfb-setwallpaper
+Architecture: all
+Depends: yad (>= 14.2)
+Description: Select and set wallpaper in MX-Fluxbox

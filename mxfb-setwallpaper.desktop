@@ -1,0 +1,11 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=MXFB Set Wallpaper
+Comment=Select and set wallpaper in MX-Fluxbox
+Exec=mxfb-setwallpaper
+Terminal=false
+Type=Application
+Icon=mxfb-setwallpaper
+Categories=X-MXFB-Tools;DesktopSettings;
+Keywords=background;desktop;
+NoDisplay=false

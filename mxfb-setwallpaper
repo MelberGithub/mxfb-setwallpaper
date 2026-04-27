@@ -1,0 +1,284 @@
+#!/bin/bash
+#mxfb_setwallpaper by Melber
+#License: GPL-3.0+
+mxfb_wallpaper_version=26.04.01
+
+#export TEXTDOMAINDIR=/usr/share/locale
+#export TEXTDOMAIN="xxx"
+#source gettext.sh
+
+#variables
+export title="$(gettext 'MXFB Set Wallpaper')"
+export class="mxfb-setwallpaper"
+export iconpath="/usr/share/icons/hicolor/scalable/apps/mxfb-setwallpaper.svg"
+export wallpaper_html="/tmp/wallpaper-list.html"
+
+
+wallpaper_setup() {
+
+if [ ! -f /tmp/wallpaper-settings ]; then
+
+    feh_current=$(grep 'feh' "$HOME/.fehbg")
+    wallpaper_current=($feh_current)
+
+    wallpaper_scale="${wallpaper_current[2]}"
+    wallpaper_scale="$(echo $wallpaper_scale | sed -e 's/--bg-//' )"
+    
+    wallpaper_path="${wallpaper_current[3]}"
+    wallpaper_path=$( echo $wallpaper_path | sed -e "s/'//g" | sed -e "s/file:\/\///g" )
+
+    wallpaper_old=$(basename $wallpaper_path)
+    wallpaper_dir=$(dirname $wallpaper_path)
+
+
+    if [ -z "$wallpaper_dir" ]; then
+        wallpaper_dir=/usr/share/backgrounds
+    fi
+
+    echo "$wallpaper_scale $wallpaper_dir" > /tmp/wallpaper-settings
+
+else
+
+    feh_current=$(cat /tmp/wallpaper-settings )
+    wallpaper_current=($feh_current)
+    
+    wallpaper_scale="${wallpaper_current[0]}"
+    wallpaper_scale="$(echo $wallpaper_scale | sed -e 's/--bg-//' )"
+    export wallpaper_dir="${wallpaper_current[1]}"  
+
+fi
+
+}
+
+
+wallpaper_list() {
+
+wallpaper_list=$(find "$wallpaper_dir" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
+
+#convert list to array
+    wallpaper_list=($wallpaper_list)
+
+    theme_setting=$(gsettings get org.gnome.desktop.interface color-scheme)
+
+    if [ "$theme_setting" = "'prefer-dark'" ]; then
+
+cat << EOF > $wallpaper_html
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body {
+    background-color: #424242 ;
+  }
+EOF
+
+    else
+
+    cat << EOF > $wallpaper_html
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body {
+    background-color: #ececee ;
+  }
+EOF
+
+    fi
+
+    cat << EOF >> $wallpaper_html
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-auto-flow: dense;
+    gap: 0px 20px;
+    max-width: 600px;
+    margin: 20px auto;
+  }
+  
+  .grid img {
+    width: 100%;
+    height: auto;
+    cursor: pointer;
+    border: 10px solid transparent;
+    transition: border-color 0.3s;
+  }
+
+  .grid img:hover {
+    border: 10px solid #c3d5f6;
+    transition: border-color 0.3s;
+  }
+
+  .grid img.selected {
+    border: solid 10px #0f56d9;
+  }
+</style>
+</head>
+
+<body>
+<div class="grid">
+EOF
+
+
+    for i in "${wallpaper_list[@]}"; do
+
+        echo "<a href="$i"> <img src="$i"> </a>" >> $wallpaper_html
+    
+    done
+
+    cat << EOF >> $wallpaper_html
+</div>
+
+<script>
+  const images = document.querySelectorAll('.grid img');
+
+  images.forEach(img => {
+    img.addEventListener('click', () => {
+      images.forEach(i => i.classList.remove('selected'));
+      img.classList.add('selected');
+    });
+  });
+</script>
+
+</body>
+</html>
+
+EOF
+
+}
+
+
+
+wallpaper_chooser() {
+
+#make wallpaper list
+
+wallpaper_setup
+
+wallpaper_list
+
+
+#TRANSLATORS Main window text
+wallpaper_text1="$(gettext 'Select wallpaper')" 
+#TRANSLATORS Button text
+BTN_CLOSE="$(gettext 'Close')" ; BTN_CLOSE+='!window-close!'
+#TRANSLATORS Button text
+BTN_APPLY="$(gettext 'Set as wallpaper')" ; BTN_APPLY+='!gtk-ok!'
+#TRANSLATORS Button text
+BTN_ABOUT="$(gettext 'About')" ; BTN_ABOUT+='!help-about!'
+#TRANSLATORS Button text
+BTN_SETTINGS="$(gettext 'Settings')"; BTN_SETTINGS+='!settings!'
+#TRANSLATORS Button text
+BTN_SCALED="$(gettext 'Scaled')"
+#TRANSLATORS Button text
+BTN_ZOOM="$(gettext 'Zoomed')"
+#TRANSLATORS Button text
+BTN_CENTERED="$(gettext 'Centered')"
+
+#--text="\n<b>$wallpaper_text1</b>\n" --text-align=center \
+
+#--button="${BTN_CENTERED}":8 \
+#--button="${BTN_ZOOM}":8 \
+#--button="${BTN_SCALED}":8 \
+
+wallpaper_selection=$(stdbuf -eL -oL yad --title="$title" --class="$class" --window-icon="$iconpath" \
+--width=650 --height=475 --center \
+--text="\n<b>Directory: $wallpaper_dir\t\tScaling: $wallpaper_scale</b>" --text-align=center \
+--html --uri="$wallpaper_html" --print-uri --disable-search --scroll \
+--buttons-layout=spread \
+--button="${BTN_ABOUT}":8 \
+--button="${BTN_SETTINGS}":6 \
+--button="${BTN_APPLY}":4 \
+--button="${BTN_CLOSE}":2 \
+)
+
+ret=$?
+
+case "$ret" in
+    2 | 252 )
+      alldone="yep"
+    ;;
+
+    4)
+        echo "$wallpaper_selection" > /tmp/wallpaper-output
+        wallpaper_selection="$(tail -1 /tmp/wallpaper-output)"
+
+        feh --bg-$wallpaper_scale "$wallpaper_selection" 
+    ;;
+
+    6 )
+      wallpaper_settings
+    ;;
+    
+    8 )
+        wallpaper_about &
+    ;;
+
+esac
+
+
+}
+
+# about window
+wallpaper_settings() {
+
+#TRANSLATORS Settings window text
+text_settings1="$(gettext 'Wallpaper scaling')" 
+#TRANSLATORS Settings window text
+text_settings2="$(gettext 'Wallpaper directory')"
+
+if [ "$wallpaper_scale" = "scale" ]; then
+    settings_scale='scale!fill!center'
+elif [ "$wallpaper_scale" = "fill" ]; then
+    settings_scale='fill!scale!center'
+elif [ "$wallpaper_scale" = "center" ]; then
+    settings_scale='center!fill!scale'
+fi
+
+yad --title="$title" --class="$class" --window-icon="$iconpath" \
+--width=300 --height=300 --center --separator=" " \
+--text="" \
+--form --columns=1 \
+--field=" ":LBL " " \
+--field="<b>$text_settings1</b>":LBL " " \
+--field="":CB "$settings_scale" \
+--field=" ":LBL " " \
+--field="<b>$text_settings2</b>":LBL " " \
+--field="":DIR "$wallpaper_dir" \
+--button=yad-ok > /tmp/wallpaper-settings
+
+}
+
+# about window
+wallpaper_about() {
+
+#TRANSLATORS Text in About window
+text_about=$(gettext "MX-Fluxbox wallpaper chooser.")
+
+iconpath96="/usr/share/icons/hicolor/scalable/apps/mxfb-setwallpaper96.svg"
+
+yad --about --class="$class" --window-icon="$iconpath" \
+--width=600 --height=500 --center \
+--image="$iconpath96" \
+--pname="$title" \
+--pversion="$mxfb_wallpaper_version" \
+--comments="$text_about" \
+--website-label="https://mxlinux.org/" \
+--website="https://mxlinux.org/" \
+--copyright="Copyright (c) 2026 Melber" \
+--authors="Melber,MX Devs" \
+--license="GPL3" 
+
+}
+
+
+export -f wallpaper_setup wallpaper_list wallpaper_chooser wallpaper_about wallpaper_settings
+
+
+until [ "$alldone" = "yep" ]; do
+    wallpaper_chooser
+done
+
+rm -f /tmp/wallpaper-output /tmp/wallpaper-settings $wallpaper_html
+
+exit

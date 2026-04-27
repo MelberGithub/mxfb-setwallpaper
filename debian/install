@@ -1,0 +1,5 @@
+mxfb-setwallpaper   usr/bin
+*.desktop           usr/share/applications
+*.svg               usr/share/icons/hicolor/scalable/apps
+
+
