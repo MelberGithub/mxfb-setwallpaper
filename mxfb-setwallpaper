@@ -37,7 +37,7 @@ if [ -z "$appsfile_check" ]; then
 [end]' >> $HOME/.fluxbox/apps
 fi
 
-if [ ! -d "$HOME/.config/MX-Linux/setwallpaper/directories" ]; then
+if [ ! -d "$HOME/.config/MX-Linux/setwallpaper" ]; then
     mkdir -p "$HOME/.config/MX-Linux/setwallpaper"
     echo '/usr/share/backgrounds' > "$HOME/.config/MX-Linux/setwallpaper/directories"
 fi
