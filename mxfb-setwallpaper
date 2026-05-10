@@ -1,7 +1,7 @@
 #!/bin/bash
 #mxfb_setwallpaper by Melber
 #License: GPL-3.0+
-mxfb_wallpaper_version=26.05.01
+mxfb_wallpaper_version=26.05.02
 
 #export TEXTDOMAINDIR=/usr/share/locale
 #export TEXTDOMAIN="xxx"
@@ -37,11 +37,12 @@ if [ -z "$appsfile_check" ]; then
 [end]' >> $HOME/.fluxbox/apps
 fi
 
-if [ ! -d "$HOME/.config/MX-Linux/setwallpaper" ]; then
+if [ ! -f "$HOME/.config/MX-Linux/setwallpaper/directories" ]; then
     mkdir -p "$HOME/.config/MX-Linux/setwallpaper"
     echo '/usr/share/backgrounds' > "$HOME/.config/MX-Linux/setwallpaper/directories"
 fi
 
+#start
 
 wallpaper_setup() {
 
@@ -53,18 +54,18 @@ if [ ! -f /tmp/wallpaper-settings ]; then
     wallpaper_scale="${wallpaper_current[2]}"
     wallpaper_scale="$(echo $wallpaper_scale | sed -e 's/--bg-//' )"
     
-    wallpaper_path="${wallpaper_current[3]}"
-    wallpaper_path=$( echo $wallpaper_path | sed -e "s/'//g" | sed -e "s/file:\/\///g" )
+    wallpaper_old1="${wallpaper_current[3]}"
+    #wallpaper_path=$( echo $wallpaper_path | sed -e "s/'//g" | sed -e "s/file:\/\///g" )
 
-    wallpaper_old1=$(basename $wallpaper_path)
-#    wallpaper_dir=$(dirname $wallpaper_path)
+    #wallpaper_old1=$(basename $wallpaper_path)
       
     if [ -n "${wallpaper_current[4]}" ]; then
     
-        wallpaper_path2="${wallpaper_current[4]}"
-        wallpaper_path2=$( echo $wallpaper_path2 | sed -e "s/'//g" | sed -e "s/file:\/\///g" )
-        wallpaper_old2=$(basename $wallpaper_path2)
-    
+        wallpaper_old2="${wallpaper_current[4]}"
+        #wallpaper_path2=$( echo $wallpaper_path2 | sed -e "s/'//g" | sed -e "s/file:\/\///g" )
+        #wallpaper_old2=$(basename $wallpaper_path2)
+    else
+        wallpaper_old2="$wallpaper_old1"
     fi
 
 
@@ -82,7 +83,7 @@ else
     wallpaper_scale="${wallpaper_current[0]}"
     wallpaper_scale="$(echo $wallpaper_scale | sed -e 's/--bg-//' )"
     
-        wallpaper_screen="${wallpaper_current[1]}"
+    wallpaper_screen="${wallpaper_current[1]}"
         
 #    export wallpaper_dir="${wallpaper_current[2]}"  
 
@@ -101,7 +102,11 @@ fi
 
 wallpaper_list() {
 
-wallpaper_list=$(find "$wallpaper_dir" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
+if [ "$wallpaper_dir" != "$wallpaper_dirold" ]; then
+
+    wallpaper_dirold="$wallpaper_dir"
+
+    wallpaper_list=$(find "$wallpaper_dir" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
 
 #convert list to array
     wallpaper_list=($wallpaper_list)
@@ -134,7 +139,7 @@ EOF
 
     fi
 
-    cat << EOF >> $wallpaper_html
+cat << EOF >> $wallpaper_html
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -167,10 +172,30 @@ EOF
 <div class="grid">
 EOF
 
-
+    
     for i in "${wallpaper_list[@]}"; do
+#here new#
 
-        echo "<a href="$i"> <img src="$i"> </a>" >> $wallpaper_html
+    filename=$(basename "$i")
+    uri="file://$(realpath "$i")"
+    hash=$(echo -n "$uri" | md5sum | cut -d' ' -f1)
+    thumb_cache=$(find ~/.cache/thumbnails/normal -name "$hash.png" 2>/dev/null)
+
+    if [ -z "$thumb_cache" ]; then
+    
+        if [ ! -d /tmp/wallthumbs/ ]; then
+        mkdir /tmp/wallthumbs/
+        fi
+
+        convert "$i" -thumbnail 150x150 "$HOME/.cache/thumbnails/normal/$hash"
+        thumb_cache="$HOME/.cache/thumbnails/normal/$hash"
+                
+#        convert "$i" -thumbnail 150x150 "/tmp/wallthumbs/$filename"
+#        thumb_cache="/tmp/wallthumbs/$filename"
+    fi
+    
+    echo "<a href="$i"> <img src="$thumb_cache" title="$filename"> </a>" >> $wallpaper_html
+
     
     done
 
@@ -192,6 +217,8 @@ EOF
 </html>
 
 EOF
+
+fi
 
 }
 
@@ -255,7 +282,7 @@ stdbuf -eL -oL  yad --plug=$key --tabnum=2 \
 > /tmp/wallpaper-output &
 plug2_pid=$!
 
-text_main1="$(gettext 'Directory')"
+text_main1="$(gettext 'Current Directory')"
 
 yad --title="$title" --class="$class" --window-icon="$iconpath" \
 --paned --key=$key --orient=vert --splitter=-40 \
@@ -295,8 +322,8 @@ case "$ret" in
     wallpaper_selection="--no-xinerama $wallpaper_selection"
         fi
 
+#      echo "feh --bg-$wallpaper_scale "$wallpaper_selection"" > /tmp/wallout
        feh --bg-$wallpaper_scale "$wallpaper_selection"
-
     ;;
 
     6 )
@@ -311,12 +338,13 @@ esac
 # settings window
 wallpaper_settings() {
 
+unset settings_done
+
 wallpaper_dirsettings() {
 
+mapfile -t wallpaper_dirlist < "$HOME/.config/MX-Linux/setwallpaper/directories"
 
-mapfile wallpaper_dirlist < "$HOME/.config/MX-Linux/setwallpaper/directories"
 
- 
 #TRANSLATORS Settings window text
 text_settings1="$(gettext 'Select wallpaper directory')"
 
@@ -335,7 +363,7 @@ wallpaper_dir=$(yad --title="$title" --class="mxfb-setwallpaper-settings" --wind
 --button="${BTN_REMOVE}":24 \
 --button="${BTN_ADD}":22 \
 --button="${BTN_SELECT}":20  \
-${wallpaper_dirlist[@]} \
+"${wallpaper_dirlist[@]}" \
 )
 
 case $? in
@@ -407,5 +435,9 @@ until [ "$alldone" = "yep" ]; do
 done
 
 rm -f /tmp/wallpaper-output /tmp/wallpaper-settings /tmp/wallpaper-dir $wallpaper_html
+
+if [ -d /tmp/wallthumbs/ ]; then
+    rm -f /tmp/wallthumbs/
+fi
 
 exit
