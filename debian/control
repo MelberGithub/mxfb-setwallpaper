@@ -9,5 +9,5 @@ Homepage: <https:/mxlinux.org>
 
 Package: mxfb-setwallpaper
 Architecture: all
-Depends: yad (>= 14.2)
-Description: Select and set wallpaper in MX-Fluxbox
+Depends: yad (>= 14.2), feh
+Description: Set wallpaper in MX-Fluxbox

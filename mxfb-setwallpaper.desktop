@@ -1,7 +1,7 @@
 [Desktop Entry]
 Encoding=UTF-8
 Name=MXFB Set Wallpaper
-Comment=Select and set wallpaper in MX-Fluxbox
+Comment=Set wallpaper in MX-Fluxbox
 Exec=mxfb-setwallpaper
 Terminal=false
 Type=Application
