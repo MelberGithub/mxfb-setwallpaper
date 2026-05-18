@@ -1,11 +1,18 @@
 #!/bin/bash
 #mxfb_setwallpaper by Melber
 #License: GPL-3.0+
-mxfb_wallpaper_version=26.05.03
+export mxfb_setwallpaper_version=26.05.04
 
 #export TEXTDOMAINDIR=/usr/share/locale
 #export TEXTDOMAIN="xxx"
 #source gettext.sh
+
+#variables
+export title="$(gettext 'MXFB Set Wallpaper')"
+export class="mxfb-setwallpaper"
+export iconpath="/usr/share/icons/hicolor/scalable/apps/mxfb-setwallpaper.svg"
+export setwallpaper_confpath="$HOME/.config/MX-Linux/setwallpaper"
+export setwallpaper_html="/tmp/wallpaper-list.html"
 
 #first run check
 
@@ -14,23 +21,18 @@ if [ ! -f "$HOME/.fehbg" ]; then
 feh --no-fehbg --bg-scale  '/usr/share/backgrounds/default25.png'" > "$HOME/.fehbg"
 fi
 
-appsfile_check=$(grep "mxfb-setwallpaper" $HOME/.fluxbox/apps)
-
-if [ -z "$appsfile_check" ]; then
-    echo '[app] (name=yad) (class=mxfb-setwallpaper)
-  [Dimensions]	{70% 70%}
-  [Position]	(CENTER)	{0% 0%}
-  [Close]	{yes}
-[end]' >> $HOME/.fluxbox/apps
+if [ ! -d "$setwallpaper_confpath" ]; then
+    mkdir -p "$setwallpaper_confpath"
 fi
 
-#variables
-export title="$(gettext 'MXFB Set Wallpaper')"
-export class="mxfb-setwallpaper"
-export iconpath="/usr/share/icons/hicolor/scalable/apps/mxfb-setwallpaper.svg"
-export wallpaper_html="/tmp/wallpaper-list.html"
+if [ ! -f "$setwallpaper_confpath/setwallpaper.conf" ]; then
+    echo "wallpaper_searchmode=recursive" > "$setwallpaper_confpath/setwallpaper.conf"
+fi
 
-#first run check
+if [ ! -f "$setwallpaper_confpath/directories" ]; then
+    echo '/usr/share/backgrounds' > "$setwallpaper_confpath/directories"
+fi
+
 
 appsfile_check=$(grep mxfb-setwallpaper $HOME/.fluxbox/apps)
 
@@ -42,16 +44,11 @@ if [ -z "$appsfile_check" ]; then
 [end]' >> $HOME/.fluxbox/apps
 fi
 
-if [ ! -f "$HOME/.config/MX-Linux/setwallpaper/directories" ]; then
-    mkdir -p "$HOME/.config/MX-Linux/setwallpaper"
-    echo '/usr/share/backgrounds' > "$HOME/.config/MX-Linux/setwallpaper/directories"
-fi
 
 #start
 
 wallpaper_setup() {
 
-wallpaper_scale="${wallpaper_current[2]}"
 wallpaper_scale=$(grep 'feh' $HOME/.fehbg | cut -d " " -f 3)
 wallpaper_scale="$(echo $wallpaper_scale | sed -e 's/--bg-//' )"
     
@@ -62,18 +59,11 @@ if [ -z "$wallpaper_old2" ]; then
     wallpaper_old2="$wallpaper_old1"
 fi
 
-if [ -z "$wallpaper_dir" ]; then
-    wallpaper_dir=/usr/share/backgrounds
-fi
-
 echo "$wallpaper_scale Screen0" > /tmp/wallpaper-settings
 
 
 if [ ! -f /tmp/wallpaper-dir ]; then
-    if [ ! -f $HOME/.config/MX-Linux/setwallpaper/directories ]; then
-        echo "/usr/share/backgrounds" > $HOME/.config/MX-Linux/setwallpaper/directories
-    fi
-    mapfile -t wallpaper_getdir < "$HOME/.config/MX-Linux/setwallpaper/directories"
+    mapfile -t wallpaper_getdir < "$setwallpaper_confpath/directories"
     export wallpaper_dir="${wallpaper_getdir[0]}"
 else
     export wallpaper_dir="$(cat /tmp/wallpaper-dir)"
@@ -93,7 +83,15 @@ if [ "$wallpaper_dir" != "$wallpaper_dirold" ]; then
     IFS="
 "
 
-    wallpaper_list=$(find "$wallpaper_dir" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
+    source $setwallpaper_confpath/setwallpaper.conf
+    
+    if  [ "$wallpaper_searchmode" = "recursive" ]; then
+        wallpaper_list=$(find "$wallpaper_dir" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
+    elif [ "$wallpaper_searchmode" = "notrecursive" ]; then
+        wallpaper_list=$(find "$wallpaper_dir" -maxdepth 1 -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
+    fi
+
+#    wallpaper_list=$(find "$wallpaper_dir" "$searchmode" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
 
 #convert list to array
     wallpaper_list=($wallpaper_list)
@@ -102,7 +100,7 @@ if [ "$wallpaper_dir" != "$wallpaper_dirold" ]; then
 
     if [ "$theme_setting" = "'prefer-dark'" ]; then
 
-cat << EOF > $wallpaper_html
+cat << EOF > $setwallpaper_html
 <!DOCTYPE html>
 <html>
 <head>
@@ -114,7 +112,7 @@ EOF
 
     else
 
-    cat << EOF > $wallpaper_html
+    cat << EOF > $setwallpaper_html
 <!DOCTYPE html>
 <html>
 <head>
@@ -126,13 +124,13 @@ EOF
 
     fi
 
-cat << EOF >> $wallpaper_html
+cat << EOF >> $setwallpaper_html
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(150px, 150px));
     grid-auto-flow: dense;
     gap: 0px 20px;
-    max-width: 900px;
+    max-width: 1200px;
     margin: 20px auto;
   }
   
@@ -182,12 +180,12 @@ EOF
     i=$(echo "$i" | sed -e 's/ /|/g')
     filename=$(echo "$filename" | sed -e "s/ /\&nbsp\;/g")
     
-    echo "<a href="$i"> <img src="$thumb_cache" title="$filename"> </a>" >> $wallpaper_html
+    echo "<a href="$i"> <img src="$thumb_cache" title="$filename"> </a>" >> $setwallpaper_html
 
     
     done
 
-    cat << EOF >> $wallpaper_html
+    cat << EOF >> $setwallpaper_html
 </div>
 
 <script>
@@ -222,8 +220,6 @@ wallpaper_setup
 wallpaper_list
 
 
-#TRANSLATORS Main window text
-wallpaper_text1="$(gettext 'Select wallpaper')" 
 #TRANSLATORS Button text
 BTN_CLOSE="$(gettext 'Close')" ; BTN_CLOSE+='!window-close!'
 #TRANSLATORS Button text
@@ -231,9 +227,7 @@ BTN_APPLY="$(gettext 'Set as wallpaper')" ; BTN_APPLY+='!gtk-ok!'
 #TRANSLATORS Button text
 BTN_ABOUT="$(gettext 'About')" ; BTN_ABOUT+='!help-about!'
 #TRANSLATORS Button text
-BTN_SETTINGS="$(gettext 'Settings')"; BTN_SETTINGS+='!settings!'
-#TRANSLATORS Button text
-BTN_DIRECTORY="$(gettext 'Change Directory')"; BTN_DIRECTORY+='!gtk-directory!'
+BTN_DIRECTORY="$(gettext 'Directory Settings')"; BTN_DIRECTORY+='!gtk-directory!'
 
 
 key=$RANDOM
@@ -267,15 +261,26 @@ yad --plug=$key --tabnum=1 \
 > /tmp/wallpaper-settings &
 
 stdbuf -eL -oL  yad --plug=$key --tabnum=2 \
---html --uri="$wallpaper_html" --print-uri --disable-search --scroll \
+--html --uri="$setwallpaper_html" --print-uri --disable-search --scroll \
 > /tmp/wallpaper-output &
 
+#TRANSLATORS Main window text 1
 text_main1="$(gettext 'Current Directory')"
+
+source $setwallpaper_confpath/setwallpaper.conf
+
+if  [ "$wallpaper_searchmode" = "recursive" ]; then
+    #TRANSLATORS Main window text 2
+    text_main2="$(gettext '(sub-directories included)')"
+elif [ "$wallpaper_searchmode" = "notrecursive" ]; then
+    #TRANSLATORS Main window text 2
+    text_main2="$(gettext '(sub-directories excluded)')"
+fi
 
 yad --title="$title" --class="$class" --window-icon="$iconpath" \
 --paned --key=$key --orient=vert --splitter=-40 \
 --width=700 --height=500 --center \
---text="\n$text_main1: <b>$wallpaper_dir</b>" --text-align=center \
+--text="\n$text_main1: <b>$wallpaper_dir</b>\t$text_main2" --text-align=center \
 --buttons-layout=spread \
 --button="${BTN_ABOUT}":'bash -c "wallpaper_about"' \
 --button="${BTN_DIRECTORY}":6 \
@@ -386,11 +391,22 @@ BTN_ADD="$(gettext 'Add to list')" ; BTN_ADD+='!list-add!'
 #TRANSLATORS Button text
 BTN_SELECT="$(gettext 'Select')" ; BTN_SELECT+='!gtk-ok!'
 
+source $setwallpaper_confpath/setwallpaper.conf
+
+if  [ "$wallpaper_searchmode" = "recursive" ]; then
+    #TRANSLATORS Button text
+    BTN_SEARCHMODE="$(gettext 'Exclude sub-directories')"
+elif [ "$wallpaper_searchmode" = "notrecursive" ]; then
+    #TRANSLATORS Button text
+    BTN_SEARCHMODE="$(gettext 'Include sub-directories')"
+fi
+
 
 wallpaper_dir=$(yad --title="$title" --class="mxfb-setwallpaper-settings" --window-icon="$iconpath" \
 --width=300 --height=300 --center --separator="" \
 --text="<b>$text_settings1</b>\n" \
 --list --column="Directory" --no-headers \
+--button="${BTN_SEARCHMODE}":26 \
 --button="${BTN_REMOVE}":24 \
 --button="${BTN_ADD}":22 \
 --button="${BTN_SELECT}":20  \
@@ -427,6 +443,16 @@ case $? in
     24 )
         sed -i "\|^$wallpaper_dir$|d" $HOME/.config/MX-Linux/setwallpaper/directories
     ;;
+    
+    26 )
+        if  [ "$wallpaper_searchmode" = "recursive" ]; then
+            echo "wallpaper_searchmode=notrecursive" > "$setwallpaper_confpath/setwallpaper.conf"
+        elif [ "$wallpaper_searchmode" = "notrecursive" ]; then
+            echo "wallpaper_searchmode=recursive" > "$setwallpaper_confpath/setwallpaper.conf"
+        fi
+        
+        unset wallpaper_dirold
+    ;;
 
     252 )
         settings_done=yes
@@ -455,7 +481,7 @@ yad --about --class="mxfb-setwallpaper-about" --window-icon="$iconpath" \
 --width=600 --height=500 --center \
 --image="$iconpath96" \
 --pname="$title" \
---pversion="$mxfb_wallpaper_version" \
+--pversion="$mxfb_setwallpaper_version" \
 --comments="$text_about" \
 --website-label="https://mxlinux.org/" \
 --website="https://mxlinux.org/" \
@@ -473,6 +499,6 @@ until [ "$alldone" = "yep" ]; do
     wallpaper_chooser
 done
 
-rm -f /tmp/wallpaper-output /tmp/wallpaper-settings /tmp/wallpaper-dir $wallpaper_html
+rm -f /tmp/wallpaper-output /tmp/wallpaper-settings /tmp/wallpaper-dir $setwallpaper_html
 
 exit
