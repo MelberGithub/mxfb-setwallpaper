@@ -1,13 +1,18 @@
 #!/bin/bash
 #mxfb_setwallpaper by Melber
 #License: GPL-3.0+
-mxfb_wallpaper_version=26.05.02
+mxfb_wallpaper_version=26.05.03
 
 #export TEXTDOMAINDIR=/usr/share/locale
 #export TEXTDOMAIN="xxx"
 #source gettext.sh
 
 #first run check
+
+if [ ! -f "$HOME/.fehbg" ]; then
+    echo "#!/bin/sh
+feh --no-fehbg --bg-scale  '/usr/share/backgrounds/default25.png'" > "$HOME/.fehbg"
+fi
 
 appsfile_check=$(grep "mxfb-setwallpaper" $HOME/.fluxbox/apps)
 
