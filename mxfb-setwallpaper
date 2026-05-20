@@ -1,7 +1,7 @@
 #!/bin/bash
 #mxfb_setwallpaper by Melber
 #License: GPL-3.0+
-export mxfb_setwallpaper_version=26.05.04
+export mxfb_setwallpaper_version=26.05.05
 
 #export TEXTDOMAINDIR=/usr/share/locale
 #export TEXTDOMAIN="xxx"
@@ -18,12 +18,10 @@ export setwallpaper_html="/tmp/wallpaper-list.html"
 
 if [ ! -f "$HOME/.fehbg" ]; then
     echo "#!/bin/sh
-feh --no-fehbg --bg-scale  '/usr/share/backgrounds/default25.png'" > "$HOME/.fehbg"
+feh --no-fehbg --bg-scale '/usr/share/backgrounds/default25.png'" > "$HOME/.fehbg"
 fi
 
-if [ ! -d "$setwallpaper_confpath" ]; then
-    mkdir -p "$setwallpaper_confpath"
-fi
+mkdir -p "$setwallpaper_confpath"
 
 if [ ! -f "$setwallpaper_confpath/setwallpaper.conf" ]; then
     echo "wallpaper_searchmode=recursive" > "$setwallpaper_confpath/setwallpaper.conf"
@@ -34,14 +32,14 @@ if [ ! -f "$setwallpaper_confpath/directories" ]; then
 fi
 
 
-appsfile_check=$(grep mxfb-setwallpaper $HOME/.fluxbox/apps)
+appsfile_check=$(grep mxfb-setwallpaper "$HOME/.fluxbox/apps" 2>/dev/null)
 
 if [ -z "$appsfile_check" ]; then
     echo '[app] (class=mxfb-setwallpaper)
   [Dimensions]	{70% 70%}
   [Position]	(CENTER)	{0% 0%}
   [Close]	{yes}
-[end]' >> $HOME/.fluxbox/apps
+[end]' >> "$HOME/.fluxbox/apps"
 fi
 
 
@@ -49,24 +47,29 @@ fi
 
 wallpaper_setup() {
 
-wallpaper_scale=$(grep 'feh' $HOME/.fehbg | cut -d " " -f 3)
-wallpaper_scale="$(echo $wallpaper_scale | sed -e 's/--bg-//' )"
-    
-wallpaper_old1=$(grep 'feh' $HOME/.fehbg | cut -d "'" -f 2)
-wallpaper_old2=$(grep 'feh' $HOME/.fehbg | cut -d "'" -f 4)
-    
-if [ -z "$wallpaper_old2" ]; then
-    wallpaper_old2="$wallpaper_old1"
+fehbg_line=$(grep 'feh' "$HOME/.fehbg")
+wallpaper_scale="${fehbg_line##* --bg-}"
+wallpaper_scale="${wallpaper_scale%% *}"
+
+wallpaper_old=()
+IFS="'" read -ra _parts <<< "$fehbg_line"
+for ((i=1; i<${#_parts[@]}; i+=2)); do
+    wallpaper_old+=("${_parts[$i]}")
+done
+
+mapfile -t _screen_outputs < <(xrandr --query | awk '/ connected/{print $1}')
+num_screens=${#_screen_outputs[@]}
+
+if [ ! -f /tmp/wallpaper-settings ]; then
+    echo "$wallpaper_scale All" > /tmp/wallpaper-settings
 fi
-
-echo "$wallpaper_scale Screen0" > /tmp/wallpaper-settings
-
 
 if [ ! -f /tmp/wallpaper-dir ]; then
     mapfile -t wallpaper_getdir < "$setwallpaper_confpath/directories"
     export wallpaper_dir="${wallpaper_getdir[0]}"
 else
-    export wallpaper_dir="$(cat /tmp/wallpaper-dir)"
+    read -r wallpaper_dir < /tmp/wallpaper-dir
+    export wallpaper_dir
 fi
 
 
@@ -78,53 +81,24 @@ wallpaper_list() {
 if [ "$wallpaper_dir" != "$wallpaper_dirold" ]; then
 
     wallpaper_dirold="$wallpaper_dir"
-    
-    old_ifs="$IFS"
-    IFS="
-"
 
-    source $setwallpaper_confpath/setwallpaper.conf
-    
-    if  [ "$wallpaper_searchmode" = "recursive" ]; then
-        wallpaper_list=$(find "$wallpaper_dir" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
-    elif [ "$wallpaper_searchmode" = "notrecursive" ]; then
-        wallpaper_list=$(find "$wallpaper_dir" -maxdepth 1 -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
-    fi
+    source "$setwallpaper_confpath/setwallpaper.conf"
 
-#    wallpaper_list=$(find "$wallpaper_dir" "$searchmode" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
-
-#convert list to array
-    wallpaper_list=($wallpaper_list)
+    depth_flag=()
+    [ "$wallpaper_searchmode" = "notrecursive" ] && depth_flag=(-maxdepth 1)
+    mapfile -t wallpaper_list < <(find "$wallpaper_dir" "${depth_flag[@]}" -type f \( -name '*.png' -o -name '*.jpg' \) | sort -f)
 
     theme_setting=$(gsettings get org.gnome.desktop.interface color-scheme)
+    [ "$theme_setting" = "'prefer-dark'" ] && bg_color="#424242" || bg_color="#ececee"
 
-    if [ "$theme_setting" = "'prefer-dark'" ]; then
-
-cat << EOF > $setwallpaper_html
+cat << EOF > "$setwallpaper_html"
 <!DOCTYPE html>
 <html>
 <head>
 <style>
   body {
-    background-color: #424242 ;
+    background-color: $bg_color ;
   }
-EOF
-
-    else
-
-    cat << EOF > $setwallpaper_html
-<!DOCTYPE html>
-<html>
-<head>
-<style>
-  body {
-    background-color: #ececee ;
-  }
-EOF
-
-    fi
-
-cat << EOF >> $setwallpaper_html
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 150px));
@@ -133,7 +107,7 @@ cat << EOF >> $setwallpaper_html
     max-width: 1200px;
     margin: 20px auto;
   }
-  
+
   .grid img {
     width: 100%;
     height: auto;
@@ -157,35 +131,26 @@ cat << EOF >> $setwallpaper_html
 <div class="grid">
 EOF
 
-    
-    for i in ${wallpaper_list[@]}; do
-#here new#
+    {
+    for i in "${wallpaper_list[@]}"; do
 
-    filename=$(basename "$i")
+    filename="${i##*/}"
     uri="file://$(realpath "$i")"
-    hash=$(echo -n "$uri" | md5sum | cut -d' ' -f1)
-    thumb_cache=$(find ~/.cache/thumbnails/normal -name "$hash.png" 2>/dev/null)
+    hash=$(printf '%s' "$uri" | md5sum); hash="${hash%% *}"
+    thumb_cache="$HOME/.cache/thumbnails/normal/$hash.png"
 
-    if [ -z "$thumb_cache" ]; then
-    
-        if [ ! -d /tmp/wallthumbs/ ]; then
-        mkdir /tmp/wallthumbs/
-        fi
-
-        convert "$i" -thumbnail 150x150 "$HOME/.cache/thumbnails/normal/$hash"
-        thumb_cache="$HOME/.cache/thumbnails/normal/$hash"
-
+    if [ ! -f "$thumb_cache" ]; then
+        convert "$i" -thumbnail 150x150 "$thumb_cache"
     fi
-    
-    i=$(echo "$i" | sed -e 's/ /|/g')
-    filename=$(echo "$filename" | sed -e "s/ /\&nbsp\;/g")
-    
-    echo "<a href="$i"> <img src="$thumb_cache" title="$filename"> </a>" >> $setwallpaper_html
 
-    
+    i="${i// /|}"
+
+    echo "<a href=\"$i\"> <img src=\"$thumb_cache\" title=\"$filename\"> </a>"
+
     done
+    } >> "$setwallpaper_html"
 
-    cat << EOF >> $setwallpaper_html
+    cat << EOF >> "$setwallpaper_html"
 </div>
 
 <script>
@@ -203,8 +168,6 @@ EOF
 </html>
 
 EOF
-
-    IFS="$old_ifs"
 
 fi
 
@@ -229,29 +192,29 @@ BTN_ABOUT="$(gettext 'About')" ; BTN_ABOUT+='!help-about!'
 #TRANSLATORS Button text
 BTN_DIRECTORY="$(gettext 'Directory Settings')"; BTN_DIRECTORY+='!gtk-directory!'
 
-
 key=$RANDOM
 
-if [ "$wallpaper_scale" = "scale" ]; then
-    settings_scale='scale!fill!center'
-elif [ "$wallpaper_scale" = "fill" ]; then
-    settings_scale='fill!scale!center'
-elif [ "$wallpaper_scale" = "center" ]; then
-    settings_scale='center!fill!scale'
-fi
+read -ra wallpaper_settings < /tmp/wallpaper-settings
+wallpaper_scale="${wallpaper_settings[0]}"
+wallpaper_screen="${wallpaper_settings[1]}"
 
+scaling_list=(scale fill center tile)
+settings_scale=$wallpaper_scale
 
-if [ "$wallpaper_screen" = "Screen0" ]; then
-    settings_screen='Screen0!Screen1!All!Span'
-elif [ "$wallpaper_screen" = "Screen1" ]; then
-    settings_screen='Screen1!Screen0!All!Span'
-elif [ "$wallpaper_screen" = "Span" ]; then
-    settings_screen='Span!All!Screen0!Screen1'
-else
-    settings_screen='All!Screen0!Screen1!Span'
-fi
+for scale_listitem in "${scaling_list[@]}"; do
+    [ "$scale_listitem" != "$wallpaper_scale" ] && settings_scale="$settings_scale!$scale_listitem"
+done
 
+screen_list=(All)
+for ((i=0; i<num_screens; i++)); do
+    screen_list+=("Screen$i")
+done
+[ "$num_screens" -gt 1 ] && screen_list+=(Span)
+settings_screen=$wallpaper_screen
 
+for screen_listitem in "${screen_list[@]}"; do
+    [ "$screen_listitem" != "$wallpaper_screen" ] && settings_screen="$settings_screen!$screen_listitem"
+done
 
 {
 yad --plug=$key --tabnum=1 \
@@ -267,12 +230,12 @@ stdbuf -eL -oL  yad --plug=$key --tabnum=2 \
 #TRANSLATORS Main window text 1
 text_main1="$(gettext 'Current Directory')"
 
-source $setwallpaper_confpath/setwallpaper.conf
+source "$setwallpaper_confpath/setwallpaper.conf"
 
-if  [ "$wallpaper_searchmode" = "recursive" ]; then
+if [ "$wallpaper_searchmode" = "recursive" ]; then
     #TRANSLATORS Main window text 2
     text_main2="$(gettext '(sub-directories included)')"
-elif [ "$wallpaper_searchmode" = "notrecursive" ]; then
+else
     #TRANSLATORS Main window text 2
     text_main2="$(gettext '(sub-directories excluded)')"
 fi
@@ -310,52 +273,34 @@ case "$ret" in
     
         else
         
-            wallpaper_selection=$(echo "$wallpaper_selection" | sed -e "s|\'/||g" | sed -e 's|file://||' )
-            wallpaper_selection=$(echo "$wallpaper_selection" | sed -e 's/|/ /g')
-            wallpaper_settings=$(cat /tmp/wallpaper-settings)
-            wallpaper_settings=($wallpaper_settings)
+            wallpaper_selection="${wallpaper_selection#\'}"
+            wallpaper_selection="${wallpaper_selection%\'}"
+            wallpaper_selection="${wallpaper_selection#file://}"
+            wallpaper_selection="${wallpaper_selection//|/ }"
+            read -ra wallpaper_settings < /tmp/wallpaper-settings
             wallpaper_scale="${wallpaper_settings[0]}"
             wallpaper_screen="${wallpaper_settings[1]}"
-            xinerama_selection=''
-        
-            if [ "$wallpaper_screen" = "All" ]; then
-                xinerama_selection=''
-                wallpaper_1=''
-                wallpaper_2=''
-        
-            elif [ "$wallpaper_screen" = "Screen0" ]; then
-                xinerama_selection=''
-                wallpaper_1=''
-                wallpaper_2="$wallpaper_old2"
 
-            elif [ "$wallpaper_screen" = "Screen1" ]; then
-                xinerama_selection=''
-                wallpaper_1="$wallpaper_old1"
-                wallpaper_2=''
-                                   
+            feh_output="feh --no-fehbg --bg-$wallpaper_scale"
+
+            if [ "$wallpaper_screen" = "All" ]; then
+                feh_output+=" '$wallpaper_selection'"
             elif [ "$wallpaper_screen" = "Span" ]; then
-                xinerama_selection='--no-xinerama'
-                wallpaper_1=''
-                wallpaper_2=''
+                feh_output="feh --no-fehbg --no-xinerama --bg-$wallpaper_scale '$wallpaper_selection'"
+            else
+                screen_num="${wallpaper_screen#Screen}"
+                for ((i=0; i<num_screens; i++)); do
+                    if [ "$i" -eq "$screen_num" ]; then
+                        feh_output+=" '$wallpaper_selection'"
+                    else
+                        feh_output+=" '${wallpaper_old[$i]:-$wallpaper_selection}'"
+                    fi
+                done
             fi
 
-            feh_output="feh --no-fehbg --bg-wallpaper_scale xinerama_selection 'wallpaper_1' 'wallpaper_selection' 'wallpaper_2'"
-            
+            printf "#!/bin/sh\n%s\n" "$feh_output" > "$HOME/.fehbg"
 
-            
-            feh_output=$(echo "$feh_output" | sed -e "s/--bg-wallpaper_scale/--bg-$wallpaper_scale/")
-            feh_output=$(echo "$feh_output" | sed -e "s/xinerama_selection/$xinerama_selection/")
-            feh_output=$(echo "$feh_output" | sed -e "s|wallpaper_1|$wallpaper_1|")
-            feh_output=$(echo "$feh_output" | sed -e "s|wallpaper_selection|$wallpaper_selection|")
-            feh_output=$(echo "$feh_output" | sed -e "s|wallpaper_2|$wallpaper_2|")
-            feh_output=$(echo "$feh_output" | sed -e 's/   / /g')
-            feh_output=$(echo "$feh_output" | sed -e 's/  / /g')
-            feh_output=$(echo "$feh_output" | sed -e "s/''//g")
-            
-            echo "#!/bin/sh
-$feh_output" > $HOME/.fehbg
-
-            sh $HOME/.fehbg
+            sh "$HOME/.fehbg"
 
             rm -f /tmp/wallpaper-output
 
@@ -378,7 +323,7 @@ unset settings_done
 
 wallpaper_dirsettings() {
 
-mapfile -t wallpaper_dirlist < "$HOME/.config/MX-Linux/setwallpaper/directories"
+mapfile -t wallpaper_dirlist < "$setwallpaper_confpath/directories"
 
 
 #TRANSLATORS Settings window text
@@ -391,12 +336,12 @@ BTN_ADD="$(gettext 'Add to list')" ; BTN_ADD+='!list-add!'
 #TRANSLATORS Button text
 BTN_SELECT="$(gettext 'Select')" ; BTN_SELECT+='!gtk-ok!'
 
-source $setwallpaper_confpath/setwallpaper.conf
+source "$setwallpaper_confpath/setwallpaper.conf"
 
-if  [ "$wallpaper_searchmode" = "recursive" ]; then
+if [ "$wallpaper_searchmode" = "recursive" ]; then
     #TRANSLATORS Button text
     BTN_SEARCHMODE="$(gettext 'Exclude sub-directories')"
-elif [ "$wallpaper_searchmode" = "notrecursive" ]; then
+else
     #TRANSLATORS Button text
     BTN_SEARCHMODE="$(gettext 'Include sub-directories')"
 fi
@@ -416,14 +361,14 @@ wallpaper_dir=$(yad --title="$title" --class="mxfb-setwallpaper-settings" --wind
 case $? in
 
     20 )
-        echo "$wallpaper_dir" > /tmp/wallpaper-dir
+        printf '%s\n' "$wallpaper_dir" > /tmp/wallpaper-dir
 
-        echo "$wallpaper_dir" > "$HOME/.config/MX-Linux/setwallpaper/directories"
-        for list_item in "${wallpaper_dirlist[@]}"; do
-            if [ "$list_item" != "$wallpaper_dir" ]; then
-            echo "$list_item" >> "$HOME/.config/MX-Linux/setwallpaper/directories"
-            fi
-        done
+        {
+            printf '%s\n' "$wallpaper_dir"
+            for list_item in "${wallpaper_dirlist[@]}"; do
+                [ "$list_item" != "$wallpaper_dir" ] && printf '%s\n' "$list_item"
+            done
+        } > "$setwallpaper_confpath/directories"
 
         settings_done=yes
     ;;
@@ -437,20 +382,21 @@ case $? in
         --button=yad-ok \
         )
 
-        echo "$dir_new" >> $HOME/.config/MX-Linux/setwallpaper/directories
+        printf '%s\n' "$dir_new" >> "$setwallpaper_confpath/directories"
     ;;
 
     24 )
-        sed -i "\|^$wallpaper_dir$|d" $HOME/.config/MX-Linux/setwallpaper/directories
+        grep -Fxv "$wallpaper_dir" "$setwallpaper_confpath/directories" > /tmp/wallpaper-dirs-tmp \
+            && mv /tmp/wallpaper-dirs-tmp "$setwallpaper_confpath/directories"
     ;;
-    
+
     26 )
-        if  [ "$wallpaper_searchmode" = "recursive" ]; then
-            echo "wallpaper_searchmode=notrecursive" > "$setwallpaper_confpath/setwallpaper.conf"
-        elif [ "$wallpaper_searchmode" = "notrecursive" ]; then
-            echo "wallpaper_searchmode=recursive" > "$setwallpaper_confpath/setwallpaper.conf"
+        if [ "$wallpaper_searchmode" = "recursive" ]; then
+            printf '%s\n' "wallpaper_searchmode=notrecursive" > "$setwallpaper_confpath/setwallpaper.conf"
+        else
+            printf '%s\n' "wallpaper_searchmode=recursive" > "$setwallpaper_confpath/setwallpaper.conf"
         fi
-        
+
         unset wallpaper_dirold
     ;;
 
@@ -499,6 +445,6 @@ until [ "$alldone" = "yep" ]; do
     wallpaper_chooser
 done
 
-rm -f /tmp/wallpaper-output /tmp/wallpaper-settings /tmp/wallpaper-dir $setwallpaper_html
+rm -f /tmp/wallpaper-output /tmp/wallpaper-settings /tmp/wallpaper-dir "$setwallpaper_html"
 
 exit
