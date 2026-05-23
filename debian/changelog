@@ -1,3 +1,11 @@
+mxfb-setwallpaper (26.05.05) mx; urgency=medium
+
+  * add tile option
+  * automatic screen detection
+  * more code clean up
+
+ -- Melber <melber-mx-linux@gmail.com>  Sat, 23 May 2026 13:45:00 +0100
+ 
 mxfb-setwallpaper (26.05.04) mx; urgency=medium
 
   * add toggle for recursive directory search
