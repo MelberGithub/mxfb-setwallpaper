@@ -14,6 +14,40 @@ export iconpath="/usr/share/icons/hicolor/scalable/apps/mxfb-setwallpaper.svg"
 export setwallpaper_confpath="$HOME/.config/MX-Linux/setwallpaper"
 export setwallpaper_html="/tmp/wallpaper-list.html"
 
+#helpers
+
+# escape text for HTML attributes and Pango markup (\& needed: bash 5.2 patsub_replacement)
+html_esc() {
+    local s="${1//&/\&amp;}"
+    s="${s//\"/\&quot;}"
+    s="${s//</\&lt;}"
+    printf '%s' "${s//>/\&gt;}"
+}
+
+# percent-encode a path for use in a file:// URI (byte-wise, like g_filename_to_uri)
+uri_enc() {
+    local LC_ALL=C s="$1" out="" c i
+    for ((i=0; i<${#s}; i++)); do
+        c="${s:i:1}"
+        case "$c" in
+            [a-zA-Z0-9/._~!\$\&\'\(\)*+,=:@-]) out+="$c" ;;
+            *) printf -v c '%%%02X' "'$c"; out+="$c" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
+# decode a percent-encoded URI
+uri_dec() {
+    local s="${1//%/\\x}"
+    printf '%b' "$s"
+}
+
+# quote a string for single-quoted use in a sh script
+sh_quote() {
+    printf "'%s'" "${1//\'/\'\\\'\'}"
+}
+
 #first run check
 
 if [ ! -f "$HOME/.fehbg" ]; then
@@ -47,14 +81,19 @@ fi
 
 wallpaper_setup() {
 
-fehbg_line=$(grep 'feh' "$HOME/.fehbg")
-wallpaper_scale="${fehbg_line##* --bg-}"
-wallpaper_scale="${wallpaper_scale%% *}"
+fehbg_line=$(grep -m1 '^feh' "$HOME/.fehbg")
 
+# parse with shell quoting rules so paths containing ' are handled
+# (.fehbg is executed by sh anyway, so eval adds no extra risk)
+wallpaper_scale=scale
 wallpaper_old=()
-IFS="'" read -ra _parts <<< "$fehbg_line"
-for ((i=1; i<${#_parts[@]}; i+=2)); do
-    wallpaper_old+=("${_parts[$i]}")
+eval "_args=(${fehbg_line#feh})" 2>/dev/null
+for _arg in "${_args[@]}"; do
+    case "$_arg" in
+        --bg-*) wallpaper_scale="${_arg#--bg-}" ;;
+        --*) ;;
+        *) wallpaper_old+=("$_arg") ;;
+    esac
 done
 
 mapfile -t _screen_outputs < <(xrandr --query | awk '/ connected/{print $1}')
@@ -95,6 +134,7 @@ cat << EOF > "$setwallpaper_html"
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="utf-8">
 <style>
   body {
     background-color: $bg_color ;
@@ -135,7 +175,7 @@ EOF
     for i in "${wallpaper_list[@]}"; do
 
     filename="${i##*/}"
-    uri="file://$(realpath "$i")"
+    uri="file://$(uri_enc "$(realpath "$i")")"
     hash=$(printf '%s' "$uri" | md5sum); hash="${hash%% *}"
     thumb_cache="$HOME/.cache/thumbnails/normal/$hash.png"
 
@@ -143,9 +183,9 @@ EOF
         convert "$i" -thumbnail 150x150 "$thumb_cache"
     fi
 
-    i="${i// /|}"
+    thumb_uri="file://$(uri_enc "$thumb_cache")"
 
-    echo "<a href=\"$i\"> <img src=\"$thumb_cache\" title=\"$filename\"> </a>"
+    echo "<a href=\"$(html_esc "$uri")\"> <img src=\"$(html_esc "$thumb_uri")\" title=\"$(html_esc "$filename")\"> </a>"
 
     done
     } >> "$setwallpaper_html"
@@ -243,7 +283,7 @@ fi
 yad --title="$title" --class="$class" --window-icon="$iconpath" \
 --paned --key=$key --orient=vert --splitter=-40 \
 --width=700 --height=500 --center \
---text="\n$text_main1: <b>$wallpaper_dir</b>\t$text_main2" --text-align=center \
+--text="\n$text_main1: <b>$(html_esc "$wallpaper_dir")</b>\t$text_main2" --text-align=center \
 --buttons-layout=spread \
 --button="${BTN_ABOUT}":'bash -c "wallpaper_about"' \
 --button="${BTN_DIRECTORY}":6 \
@@ -276,7 +316,7 @@ case "$ret" in
             wallpaper_selection="${wallpaper_selection#\'}"
             wallpaper_selection="${wallpaper_selection%\'}"
             wallpaper_selection="${wallpaper_selection#file://}"
-            wallpaper_selection="${wallpaper_selection//|/ }"
+            wallpaper_selection="$(uri_dec "$wallpaper_selection")"
             read -ra wallpaper_settings < /tmp/wallpaper-settings
             wallpaper_scale="${wallpaper_settings[0]}"
             wallpaper_screen="${wallpaper_settings[1]}"
@@ -284,16 +324,16 @@ case "$ret" in
             feh_output="feh --no-fehbg --bg-$wallpaper_scale"
 
             if [ "$wallpaper_screen" = "All" ]; then
-                feh_output+=" '$wallpaper_selection'"
+                feh_output+=" $(sh_quote "$wallpaper_selection")"
             elif [ "$wallpaper_screen" = "Span" ]; then
-                feh_output="feh --no-fehbg --no-xinerama --bg-$wallpaper_scale '$wallpaper_selection'"
+                feh_output="feh --no-fehbg --no-xinerama --bg-$wallpaper_scale $(sh_quote "$wallpaper_selection")"
             else
                 screen_num="${wallpaper_screen#Screen}"
                 for ((i=0; i<num_screens; i++)); do
                     if [ "$i" -eq "$screen_num" ]; then
-                        feh_output+=" '$wallpaper_selection'"
+                        feh_output+=" $(sh_quote "$wallpaper_selection")"
                     else
-                        feh_output+=" '${wallpaper_old[$i]:-$wallpaper_selection}'"
+                        feh_output+=" $(sh_quote "${wallpaper_old[$i]:-$wallpaper_selection}")"
                     fi
                 done
             fi
@@ -438,7 +478,7 @@ yad --about --class="mxfb-setwallpaper-about" --window-icon="$iconpath" \
 }
 
 
-export -f wallpaper_setup wallpaper_list wallpaper_chooser wallpaper_about wallpaper_settings
+export -f html_esc uri_enc uri_dec sh_quote wallpaper_setup wallpaper_list wallpaper_chooser wallpaper_about wallpaper_settings
 
 
 until [ "$alldone" = "yep" ]; do
